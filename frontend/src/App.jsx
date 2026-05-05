@@ -102,11 +102,12 @@ export default function App() {
     }
   };
 
-  const getQuizPoint = (eventType, qNo) => {
-    const ev = QUIZ_EVENTS[eventType];
-    if (!ev) return 0;
-    if (ev.pointPerQ) return ev.pointPerQ;
-    return ev.getPoints(qNo);
+  // Dinamik puanlama:
+  // Soru sayısı > 45 ise her soru 10 puan
+  // Soru sayısı <= 45 ise her 10 soruda değer 10 artar (1-10→10, 11-20→20, 21-30→30, 31-40→40, 41-45→50)
+  const getQuizPoint = (totalQuestions, qNo) => {
+    if (totalQuestions > 45) return 10;
+    return Math.ceil(qNo / 10) * 10;
   };
 
   const calcGroupScore = (groupNo, eventType, scores, overrideTotalQ) => {
@@ -116,7 +117,7 @@ export default function App() {
     let total = 0;
     const qCount = overrideTotalQ || ev.totalQ;
     for (let q = 1; q <= qCount; q++) {
-      if (gs[q]) total += getQuizPoint(eventType, q);
+      if (gs[q]) total += getQuizPoint(qCount, q);
     }
     return total;
   };
@@ -643,7 +644,7 @@ export default function App() {
   // Puanlama
   if (quizStep === 'scoring') {
     const myGroupObjs = quizGroups.filter(g=>quizMyGroups.includes(g.no));
-    const qPoint = getQuizPoint(quizEventType, quizCurrentQ);
+    const qPoint = getQuizPoint(totalQ, quizCurrentQ);
     const toggleAnswer = async (groupNo) => {
       const gs=quizScoresRef.current[groupNo]||{}; const newGs={...gs,[quizCurrentQ]:!gs[quizCurrentQ]};
       const newScores={...quizScoresRef.current,[groupNo]:newGs}; quizScoresRef.current=newScores; setQuizScores(newScores);
@@ -674,8 +675,16 @@ export default function App() {
             <span style={{fontSize:11,color:'#475569'}}>{ev?.label}</span>
             <span style={{fontSize:11,color:'#475569'}}>{quizCurrentQ} / {totalQ}</span>
           </div>
-          <div style={{background:'#1a2035',borderRadius:6,height:6,marginBottom:16,overflow:'hidden'}}>
+          <div style={{background:'#1a2035',borderRadius:6,height:6,marginBottom:10,overflow:'hidden'}}>
             <div style={{height:'100%',background:'linear-gradient(90deg,#fbbf24,#f59e0b)',width:progressPct+'%',borderRadius:6,transition:'width 0.3s'}}/>
+          </div>
+          <div style={{background: totalQ > 45 ? '#0a1a0a' : '#0a0e1a', border:'1px solid '+(totalQ > 45 ? '#22c55e33' : '#b47cff33'), borderRadius:8, padding:'5px 12px', marginBottom:14, display:'flex', alignItems:'center', gap:6}}>
+            <span style={{fontSize:10, color: totalQ > 45 ? '#4ade80' : '#b47cff', fontWeight:700}}>
+              {totalQ > 45
+                ? `📊 ${totalQ} soru · Sabit puanlama: Her soru 10 puan`
+                : `📊 ${totalQ} soru · Kademeli puanlama: ${Array.from({length:Math.ceil(totalQ/10)},(_,i)=>`${i*10+1}-${Math.min((i+1)*10,totalQ)}→${(i+1)*10}p`).join(' / ')}`
+              }
+            </span>
           </div>
           <div style={{background:'#0d1120',border:'1px solid #1a2035',borderRadius:16,padding:'16px 18px 14px',marginBottom:14}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
