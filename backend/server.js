@@ -126,6 +126,7 @@ app.post('/api/quiz/parse-answers', upload.single('file'), async function(req, r
     }
     var answers = {};
     var lines = text.split(/\r?\n/);
+    lines.forEach(function(line) {
       line = line.trim();
       if (!line) return;
       var m = line.match(/^(\d+)[\-\.\)\s]+(.+)$/);
