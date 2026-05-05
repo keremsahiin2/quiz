@@ -59,8 +59,8 @@ export default function App() {
   const [quizData, setQuizData]                 = useState(null);
   const [quizLoaded, setQuizLoaded]             = useState(false);
   const [quizRole, setQuizRole]                 = useState(null);
-  const [quizStep, setQuizStep]                 = useState('select');
-  const [quizEventType, setQuizEventType]       = useState(null);
+  const [quizStep, setQuizStep]                 = useState('groups');
+  const [quizEventType, setQuizEventType]       = useState('genelkultur');
   const [quizGroups, setQuizGroups]             = useState([]);
   const [quizMyGroups, setQuizMyGroups]         = useState([]);
   const [quizCurrentQ, setQuizCurrentQ]         = useState(1);
@@ -109,12 +109,13 @@ export default function App() {
     return ev.getPoints(qNo);
   };
 
-  const calcGroupScore = (groupNo, eventType, scores) => {
-    const ev = QUIZ_EVENTS[eventType];
+  const calcGroupScore = (groupNo, eventType, scores, overrideTotalQ) => {
+    const ev = QUIZ_EVENTS[eventType] || QUIZ_EVENTS['genelkultur'];
     if (!ev) return 0;
     const gs = scores[groupNo] || {};
     let total = 0;
-    for (let q = 1; q <= ev.totalQ; q++) {
+    const qCount = overrideTotalQ || ev.totalQ;
+    for (let q = 1; q <= qCount; q++) {
       if (gs[q]) total += getQuizPoint(eventType, q);
     }
     return total;
@@ -143,7 +144,7 @@ export default function App() {
     fetch('/api/quiz').then(r=>r.json()).then(d => {
       if (d.quizData) {
         setQuizData(d.quizData);
-        setQuizEventType(d.quizData.eventType);
+        setQuizEventType(d.quizData.eventType || 'genelkultur');
         setQuizGroups(d.quizData.groups||[]);
         setQuizScores(d.quizData.scores||{});
         quizScoresRef.current = d.quizData.scores||{};
@@ -188,7 +189,6 @@ export default function App() {
           });
           setQuizGroupCountSet(true);
           setQuizGroupCount(prev => prev || String(srv.groups.length));
-          setQuizStep(prev => { if (prev === 'select' && !quizUserWentBackRef.current) return 'groups'; return prev; });
         }
         if (srv.eventType) setQuizEventType(srv.eventType);
         setQuizScores(prev => {
@@ -232,13 +232,25 @@ export default function App() {
     setQuizSaving(false);
   };
 
+  const safeJsonParse = async (res) => {
+    const text = await res.text();
+    if (!text || !text.trim()) throw new Error(`Sunucu boş yanıt döndürdü (HTTP ${res.status})`);
+    try { return JSON.parse(text); } catch { throw new Error(`Sunucu geçersiz yanıt döndürdü (HTTP ${res.status}): ${text.slice(0, 120)}`); }
+  };
+
   const handleCombinedFileUpload = async (file) => {
     if (!file) return;
+    const allowedExts = ['txt', 'docx', 'pdf'];
+    const fileExt = file.name.split('.').pop().toLowerCase();
+    if (!allowedExts.includes(fileExt)) {
+      setQuizCombinedError('Sadece .txt, .docx veya .pdf dosyası desteklenir');
+      return;
+    }
     setQuizCombinedLoading(true); setQuizCombinedError('');
     try {
       const formData = new FormData(); formData.append('file', file);
       const qRes = await fetch('/api/quiz/parse-questions', { method:'POST', body:formData });
-      const qJson = await qRes.json();
+      const qJson = await safeJsonParse(qRes);
       if (qJson.error) throw new Error(qJson.error);
       setQuizQuestions(qJson.questions||{}); setQuizQFile(file.name+' ('+qJson.count+' soru)'); setQuizHostQ(1);
       const answersFromQuestions = {};
@@ -253,7 +265,7 @@ export default function App() {
       } else {
         const formData2 = new FormData(); formData2.append('file', file);
         const aRes = await fetch('/api/quiz/parse-answers',{method:'POST',body:formData2});
-        const aJson = await aRes.json();
+        const aJson = await safeJsonParse(aRes);
         const answers = (!aJson.error && aJson.count > 0) ? aJson.answers : {};
         const cnt = Object.keys(answers).length;
         if (cnt > 0) { setQuizAnswers(answers); setQuizAnswerFile(file.name+' ('+cnt+' cevap)'); }
@@ -268,11 +280,17 @@ export default function App() {
 
   const handleQuestionFileUpload = async (file) => {
     if (!file) return;
+    const allowedExts = ['txt', 'docx', 'pdf'];
+    const fileExt = file.name.split('.').pop().toLowerCase();
+    if (!allowedExts.includes(fileExt)) {
+      setQuizQError('Sadece .txt, .docx veya .pdf dosyası desteklenir');
+      return;
+    }
     setQuizQLoading(true); setQuizQError('');
     try {
       const formData = new FormData(); formData.append('file', file);
       const res = await fetch('/api/quiz/parse-questions',{method:'POST',body:formData});
-      const json = await res.json();
+      const json = await safeJsonParse(res);
       if (json.error) throw new Error(json.error);
       setQuizQuestions(json.questions); setQuizQFile(file.name+' ('+json.count+' soru)'); setQuizHostQ(1);
     } catch(e) { setQuizQError('Dosya okunamadı: '+e.message); }
@@ -280,7 +298,7 @@ export default function App() {
   };
 
   const deleteQuizData = () => {
-    setQuizData(null); setQuizStep('select'); setQuizEventType(null); setQuizGroups([]); setQuizMyGroups([]);
+    setQuizData(null); setQuizStep('groups'); setQuizEventType('genelkultur'); setQuizGroups([]); setQuizMyGroups([]);
     setQuizCurrentQ(1); setQuizScores({}); setQuizDeleteConfirm(false); setQuizDeletePassword('');
     setQuizDeletePasswordError(false); setQuizGroupCount(''); setQuizGroupCountSet(false);
     setQuizCombinedFile(null); setQuizAnswers({}); setQuizAnswerFile(null); setQuizQuestions({}); setQuizQFile(null);
@@ -354,9 +372,9 @@ export default function App() {
               <div style={{flex:1}}>
                 {quizCombinedLoading ? <span style={{fontSize:13,color:'#4fc9ff',fontWeight:700}}>⟳ Dosya işleniyor…</span>
                   : quizCombinedFile ? <span style={{fontSize:12,color:'#22c55e',fontWeight:700}}>{quizCombinedFile}</span>
-                  : <span style={{fontSize:12,color:'#475569'}}>Dosya seç (.docx veya .txt)</span>}
+                  : <span style={{fontSize:12,color:'#475569'}}>Dosya seç (.docx, .txt veya .pdf)</span>}
               </div>
-              <input type="file" accept=".txt,.docx" style={{display:'none'}} onChange={e=>{if(e.target.files[0]) handleCombinedFileUpload(e.target.files[0]);}} />
+              <input type="file" accept=".txt,.docx,.pdf" style={{display:'none'}} onChange={e=>{if(e.target.files[0]) handleCombinedFileUpload(e.target.files[0]);}} />
             </label>
             {quizCombinedError && <div style={{fontSize:11,color:'#f87171',marginTop:8}}>❌ {quizCombinedError}</div>}
             {quizCombinedFile && (
@@ -395,6 +413,32 @@ export default function App() {
               <div style={{fontSize:12,color:'#64748b',lineHeight:1.5}}>Grupların cevaplarını işaretle ve<br/>anlık puan tablosunu takip et.</div>
             </div>
           </button>
+
+          {/* Etkinliği Sıfırla */}
+          {quizData && (
+            <div>
+              <button
+                onClick={()=>{setQuizDeleteConfirm(true);setQuizDeletePassword('');setQuizDeletePasswordError(false);}}
+                style={{width:'100%',padding:'9px',borderRadius:10,border:'1px solid #7f1d1d',cursor:'pointer',background:'transparent',color:'#f87171',fontWeight:600,fontSize:12,marginBottom:8}}>
+                🗑 Etkinliği Sıfırla
+              </button>
+              {quizDeleteConfirm && (
+                <div style={{background:'#150a0a',border:'1px solid #7f1d1d',borderRadius:10,padding:'12px 14px',marginBottom:8}}>
+                  <div style={{fontSize:12,color:'#fca5a5',fontWeight:700,marginBottom:8}}>🔐 Silmek için şifreyi girin</div>
+                  <input type="password" value={quizDeletePassword} onChange={e=>{setQuizDeletePassword(e.target.value);setQuizDeletePasswordError(false);}}
+                    onKeyDown={e=>{if(e.key==='Enter'){if(quizDeletePassword==='qq')deleteQuizData();else setQuizDeletePasswordError(true);}}}
+                    placeholder="Şifre" style={{...S.input,marginBottom:6,fontSize:16,letterSpacing:4,textAlign:'center'}}/>
+                  {quizDeletePasswordError && <div style={{fontSize:11,color:'#f87171',marginBottom:6,textAlign:'center'}}>❌ Yanlış şifre</div>}
+                  <div style={{display:'flex',gap:6}}>
+                    <button onClick={()=>{setQuizDeleteConfirm(false);setQuizDeletePassword('');setQuizDeletePasswordError(false);}}
+                      style={{flex:1,padding:'8px',borderRadius:8,border:'1px solid #1a2035',cursor:'pointer',background:'#0d1120',color:'#94a3b8',fontWeight:600,fontSize:12}}>İptal</button>
+                    <button onClick={()=>{if(quizDeletePassword==='qq')deleteQuizData();else setQuizDeletePasswordError(true);}}
+                      style={{flex:1,padding:'8px',borderRadius:8,border:'none',cursor:'pointer',background:'#7f1d1d',color:'#fca5a5',fontWeight:700,fontSize:12}}>Sil</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -406,7 +450,7 @@ export default function App() {
       const ev = QUIZ_EVENTS[quizEventType];
       const displayScores = Object.keys(quizLiveScores).length > 0 ? quizLiveScores : quizScores;
       const displayGroups = quizLiveGroups.length > 0 ? quizLiveGroups : quizGroups;
-      const allGroupScores = displayGroups.map(g=>({...g,score:calcGroupScore(g.no,quizEventType,displayScores)})).sort((a,b)=>b.score-a.score);
+      const allGroupScores = displayGroups.map(g=>({...g,score:calcGroupScore(g.no,quizEventType,displayScores,totalQ)})).sort((a,b)=>b.score-a.score);
       const maxScore = allGroupScores.length > 0 ? allGroupScores[0].score : 0;
       const medals = ['🥇','🥈','🥉'];
       const sortedByScore = [...allGroupScores].sort((a,b)=>b.score-a.score);
@@ -463,13 +507,13 @@ export default function App() {
             <div style={{textAlign:'center',marginBottom:32}}>
               <div style={{fontSize:44,marginBottom:10}}>📄</div>
               <div style={{fontSize:18,fontWeight:800,color:'#fff',marginBottom:6}}>Soru Dosyası Yükle</div>
-              <div style={{fontSize:12,color:'#64748b',lineHeight:1.6}}>.docx veya .txt formatında soru dosyası yükleyin.</div>
+              <div style={{fontSize:12,color:'#64748b',lineHeight:1.6}}>.docx, .txt veya .pdf formatında soru dosyası yükleyin.</div>
             </div>
             <label style={{display:'flex',flexDirection:'column',alignItems:'center',gap:14,padding:'32px 24px',borderRadius:16,border:'2px dashed #1a2035',cursor:'pointer',background:'#0a0e1a',transition:'all 0.2s',marginBottom:16}}
               onMouseOver={e=>{e.currentTarget.style.borderColor='#b47cff';}} onMouseOut={e=>{e.currentTarget.style.borderColor='#1a2035';}}>
               <span style={{fontSize:36}}>📂</span>
-              {quizQLoading ? <span style={{fontSize:14,color:'#b47cff',fontWeight:700}}>⟳ Okunuyor…</span> : <span style={{fontSize:14,color:'#475569'}}>Dosya seç (.docx veya .txt)</span>}
-              <input type="file" accept=".txt,.docx" style={{display:'none'}} onChange={e=>{if(e.target.files[0]) handleQuestionFileUpload(e.target.files[0]);}} />
+              {quizQLoading ? <span style={{fontSize:14,color:'#b47cff',fontWeight:700}}>⟳ Okunuyor…</span> : <span style={{fontSize:14,color:'#475569'}}>Dosya seç (.docx, .txt veya .pdf)</span>}
+              <input type="file" accept=".txt,.docx,.pdf" style={{display:'none'}} onChange={e=>{if(e.target.files[0]) handleQuestionFileUpload(e.target.files[0]);}} />
             </label>
             {quizQError && <div style={{background:'#1f0f0f',border:'1px solid #7f1d1d',borderRadius:10,padding:'10px 14px',color:'#fca5a5',fontSize:13,marginBottom:12}}>❌ {quizQError}</div>}
           </div>
@@ -536,70 +580,9 @@ export default function App() {
   }
 
   // ─── PUANTÖR MODU ─────────────────────────────────────────────────────────────
-  const ev = QUIZ_EVENTS[quizEventType];
-  const totalQ = ev ? ev.totalQ : 0;
-
-  // Etkinlik seçim
-  if (quizStep === 'select') {
-    return (
-      <div style={S.page}>
-        <div style={S.header}>
-          <div style={S.headerLeft}>
-            <button style={{...S.smallBtn,marginRight:4}} onClick={()=>setQuizRole(null)}>← Geri</button>
-          </div>
-        </div>
-        <div style={{maxWidth:480,margin:'0 auto',padding:'32px 18px'}}>
-          <div style={{textAlign:'center',marginBottom:32}}>
-            <div style={{fontSize:48,marginBottom:8}}>🏆</div>
-            <div style={{fontSize:20,fontWeight:800,color:'#fff',marginBottom:4}}>Quiz Night</div>
-            <div style={{fontSize:13,color:'#475569'}}>Etkinlik türünü seçin</div>
-          </div>
-          {Object.entries(QUIZ_EVENTS).map(([key,evt])=>(
-            <button key={key}
-              onClick={()=>{
-                quizUserWentBackRef.current=false;
-                if(key==='genelkultur'){const detectedQ=Object.keys(quizQuestions).length;if(detectedQ===50||detectedQ===55)QUIZ_EVENTS.genelkultur.totalQ=detectedQ;}
-                setQuizEventType(key);setQuizGroups([]);setQuizGroupCountSet(false);setQuizGroupCount('');setQuizScores({});setQuizMyGroups([]);setQuizCurrentQ(1);setQuizStep('groups');
-              }}
-              style={{width:'100%',display:'flex',alignItems:'center',gap:16,padding:'22px 24px',borderRadius:16,border:'1px solid #1a2035',cursor:'pointer',textAlign:'left',background:'#0d1120',marginBottom:14,transition:'all 0.2s'}}
-              onMouseOver={e=>{e.currentTarget.style.borderColor='#fbbf24';e.currentTarget.style.background='#12100a';}}
-              onMouseOut={e=>{e.currentTarget.style.borderColor='#1a2035';e.currentTarget.style.background='#0d1120';}}>
-              <span style={{fontSize:40}}>{evt.icon}</span>
-              <div>
-                <div style={{fontSize:17,fontWeight:800,color:'#fff',marginBottom:4}}>{evt.label}</div>
-                <div style={{fontSize:12,color:'#64748b'}}>{key==='genelkultur'?'50 veya 55 Soru · 10 puan/soru':'40 Soru · 1000 Puan'}</div>
-              </div>
-            </button>
-          ))}
-          {quizData && (
-            <div style={{marginTop:8,padding:'14px 18px',background:'#0a1a0a',border:'1px solid #22c55e33',borderRadius:12}}>
-              <div style={{fontSize:12,color:'#22c55e',fontWeight:700,marginBottom:8}}>✓ Kayıtlı etkinlik mevcut</div>
-              <div style={{fontSize:12,color:'#64748b',marginBottom:10}}>{QUIZ_EVENTS[quizData.eventType]?.label} · {quizData.groups?.length||0} grup</div>
-              <button onClick={()=>{quizUserWentBackRef.current=false;setQuizEventType(quizData.eventType);setQuizGroups(quizData.groups||[]);setQuizScores(quizData.scores||{});setQuizMyGroups(quizData.myGroups||[]);setQuizCurrentQ(quizData.currentQ||1);setQuizGroupCountSet(true);setQuizGroupCount(String((quizData.groups||[]).length));setQuizStep('groups');}}
-                style={{width:'100%',padding:'10px',borderRadius:10,border:'none',cursor:'pointer',background:'linear-gradient(135deg,#22c55e,#16a34a)',color:'#fff',fontWeight:700,fontSize:13,marginBottom:8}}>Devam Et →</button>
-              <button onClick={()=>{setQuizDeleteConfirm(true);setQuizDeletePassword('');setQuizDeletePasswordError(false);}}
-                style={{width:'100%',padding:'9px',borderRadius:10,border:'1px solid #7f1d1d',cursor:'pointer',background:'#1f0f0f',color:'#f87171',fontWeight:600,fontSize:12}}>🗑 Etkinliği Sil</button>
-              {quizDeleteConfirm && (
-                <div style={{marginTop:8,background:'#150a0a',border:'1px solid #7f1d1d',borderRadius:10,padding:'12px 14px'}}>
-                  <div style={{fontSize:12,color:'#fca5a5',fontWeight:700,marginBottom:8}}>🔐 Silmek için şifreyi girin</div>
-                  <input type="password" value={quizDeletePassword} onChange={e=>{setQuizDeletePassword(e.target.value);setQuizDeletePasswordError(false);}}
-                    onKeyDown={e=>{if(e.key==='Enter'){if(quizDeletePassword==='qq')deleteQuizData();else setQuizDeletePasswordError(true);}}}
-                    placeholder="Şifre" style={{...S.input,marginBottom:6,fontSize:16,letterSpacing:4,textAlign:'center'}}/>
-                  {quizDeletePasswordError && <div style={{fontSize:11,color:'#f87171',marginBottom:6,textAlign:'center'}}>❌ Yanlış şifre</div>}
-                  <div style={{display:'flex',gap:6}}>
-                    <button onClick={()=>{setQuizDeleteConfirm(false);setQuizDeletePassword('');setQuizDeletePasswordError(false);}}
-                      style={{flex:1,padding:'8px',borderRadius:8,border:'1px solid #1a2035',cursor:'pointer',background:'#0d1120',color:'#94a3b8',fontWeight:600,fontSize:12}}>İptal</button>
-                    <button onClick={()=>{if(quizDeletePassword==='qq')deleteQuizData();else setQuizDeletePasswordError(true);}}
-                      style={{flex:1,padding:'8px',borderRadius:8,border:'none',cursor:'pointer',background:'#7f1d1d',color:'#fca5a5',fontWeight:700,fontSize:12}}>Sil</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
+  const ev = QUIZ_EVENTS[quizEventType] || QUIZ_EVENTS['genelkultur'];
+  const loadedQCount = Object.keys(quizQuestions).length;
+  const totalQ = loadedQCount > 0 ? loadedQCount : (ev ? ev.totalQ : 55);
 
   // Grup ayarlama
   if (quizStep === 'groups') {
@@ -611,31 +594,15 @@ export default function App() {
       setQuizScores(newScores); const data={eventType:quizEventType,groups:quizGroups,scores:newScores,myGroups:quizMyGroups};
       setQuizData(data); saveQuizData(data); setQuizCurrentQ(1); setQuizStep('scoring');
     };
-    if (!quizGroupCountSet && quizGroups.length===0) {
-      const cnt=parseInt(quizGroupCount); const isValid=cnt>=1&&cnt<=50;
-      return (
-        <div style={S.page}>
-          <div style={S.header}><div style={S.headerLeft}><button style={{...S.smallBtn,marginRight:4}} onClick={()=>setQuizStep('select')}>← Geri</button><span style={{fontSize:13,fontWeight:800,letterSpacing:2,color:'#fff'}}>{ev?.icon} {ev?.label}</span></div></div>
-          <div style={{maxWidth:480,margin:'0 auto',padding:'40px 18px',textAlign:'center'}}>
-            <div style={{fontSize:48,marginBottom:12}}>👥</div>
-            <div style={{fontSize:20,fontWeight:800,color:'#fff',marginBottom:6}}>Kaç grup katılıyor?</div>
-            <div style={{fontSize:13,color:'#475569',marginBottom:28}}>Grup sayısını girin, sonra her grubun adını girebilirsiniz.</div>
-            <input type="number" min="1" max="50" value={quizGroupCount} onChange={e=>setQuizGroupCount(e.target.value)} placeholder="Örn: 8"
-              style={{...S.input,fontSize:28,padding:'18px',textAlign:'center',marginBottom:20,maxWidth:200,margin:'0 auto 20px'}}/>
-            <br/>
-            <button onClick={()=>{const n=parseInt(quizGroupCount);if(isValid){const groups=Array.from({length:n},(_,i)=>({no:String(i+1),name:''}));setQuizGroups(groups);setQuizGroupCountSet(true);}}} disabled={!isValid}
-              style={{padding:'15px 40px',borderRadius:12,border:'none',cursor:isValid?'pointer':'default',fontWeight:800,fontSize:16,background:isValid?'linear-gradient(135deg,#fbbf24,#f59e0b)':'#111827',color:isValid?'#000':'#374151'}}>
-              Grupları Oluştur →
-            </button>
-          </div>
-        </div>
-      );
-    }
+    // Grup sayısı sorusu kaldırıldı — doğrudan grup listesi ekranı
     return (
       <div style={S.page}>
         <div style={S.header}>
-          <div style={S.headerLeft}><button style={{...S.smallBtn,marginRight:4}} onClick={()=>{quizUserWentBackRef.current=true;setQuizStep('select');}}>← Geri</button><span style={{fontSize:13,fontWeight:800,letterSpacing:2,color:'#fff'}}>{ev?.icon} {ev?.label}</span></div>
-          <div style={S.headerRight}><span style={{fontSize:10,color:'#22c55e'}}>🔄 Canlı</span></div>
+          <div style={S.headerLeft}><button style={{...S.smallBtn,marginRight:4}} onClick={()=>setQuizRole(null)}>← Geri</button><span style={{fontSize:13,fontWeight:800,letterSpacing:2,color:'#fff'}}>🏆 QUIZ NIGHT</span></div>
+          <div style={S.headerRight}>
+            <button onClick={()=>setQuizStep('results')} style={{...S.smallBtn,color:'#fbbf24',borderColor:'#fbbf2444'}}>📊 Sonuçlar</button>
+            <span style={{fontSize:10,color:'#22c55e'}}>🔄 Canlı</span>
+          </div>
         </div>
         <div style={{maxWidth:480,margin:'0 auto',padding:'20px 18px'}}>
           <div style={{fontSize:13,fontWeight:700,color:'#94a3b8',marginBottom:4,textTransform:'uppercase',letterSpacing:1}}>Gruplar · {quizGroups.length} grup</div>
@@ -668,7 +635,6 @@ export default function App() {
           </div>
           <button onClick={handleStart} disabled={quizGroups.length===0||quizMyGroups.length===0}
             style={{width:'100%',padding:'15px',borderRadius:12,border:'none',cursor:'pointer',fontWeight:800,fontSize:15,background:(quizGroups.length>0&&quizMyGroups.length>0)?'linear-gradient(135deg,#fbbf24,#f59e0b)':'#111827',color:(quizGroups.length>0&&quizMyGroups.length>0)?'#000':'#374151',marginBottom:10}}>Puanlamayı Başlat →</button>
-          <button onClick={()=>setQuizStep('results')} style={{width:'100%',padding:'11px',borderRadius:10,border:'1px solid #1a2035',cursor:'pointer',background:'#0d1120',color:'#94a3b8',fontSize:13,fontWeight:600}}>📊 Sonuçları Gör</button>
         </div>
       </div>
     );
@@ -781,7 +747,7 @@ export default function App() {
   if (quizStep === 'results') {
     const displayScores = Object.keys(quizLiveScores).length > 0 ? quizLiveScores : quizScores;
     const displayGroups = quizLiveGroups.length > 0 ? quizLiveGroups : quizGroups;
-    const allGroupScores = displayGroups.map(g=>({...g,score:calcGroupScore(g.no,quizEventType,displayScores)})).sort((a,b)=>b.score-a.score);
+    const allGroupScores = displayGroups.map(g=>({...g,score:calcGroupScore(g.no,quizEventType,displayScores,totalQ)})).sort((a,b)=>b.score-a.score);
     const maxScore = allGroupScores.length > 0 ? allGroupScores[0].score : 0;
     const medals = ['🥇','🥈','🥉'];
     return (
@@ -814,7 +780,7 @@ export default function App() {
               const barWidth=maxScore>0?Math.round((g.score/maxScore)*100):0;
               const isExpanded=quizExpandedGroup===g.no;
               const groupScoreMap=displayScores[g.no]||{};
-              const tQ=ev?ev.totalQ:50;
+              const tQ=totalQ;
               return (
                 <div key={g.no} style={{marginBottom:8}}>
                   <div onClick={()=>setQuizExpandedGroup(isExpanded?null:g.no)} style={{background:isTop&&currentRank===1&&g.score>0?'#12100a':'#0d1120',border:'1px solid '+(isExpanded?'#fbbf2466':isTop&&currentRank===1&&g.score>0?'#fbbf2444':isMe?'#4fc9ff33':'#0f1525'),borderRadius:isExpanded?'12px 12px 0 0':12,padding:'14px 16px',position:'relative',overflow:'hidden',cursor:'pointer'}}>

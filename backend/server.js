@@ -3,6 +3,23 @@ const express = require('express');
 const cors    = require('cors');
 const axios   = require('axios');
 const mammoth = require('mammoth');
+const PDFParser = require('pdf2json');
+
+function parsePdf(buffer) {
+  return new Promise(function(resolve, reject) {
+    var parser = new PDFParser();
+    parser.on('pdfParser_dataError', function(err) { reject(new Error(err.parserError)); });
+    parser.on('pdfParser_dataReady', function(data) {
+      var text = data.Pages.map(function(page) {
+        return page.Texts.map(function(t) {
+          return decodeURIComponent(t.R.map(function(r) { return r.T; }).join(''));
+        }).join(' ');
+      }).join('\n');
+      resolve(text);
+    });
+    parser.parseBuffer(buffer);
+  });
+}
 const multer  = require('multer');
 const path    = require('path');
 
@@ -102,12 +119,13 @@ app.post('/api/quiz/parse-answers', upload.single('file'), async function(req, r
     } else if (ext === 'docx') {
       var result = await mammoth.extractRawText({ buffer: req.file.buffer });
       text = result.value;
+    } else if (ext === 'pdf') {
+      text = await parsePdf(req.file.buffer);
     } else {
-      return res.status(400).json({ error: 'Sadece .txt veya .docx desteklenir' });
+      return res.status(400).json({ error: 'Sadece .txt, .docx veya .pdf desteklenir' });
     }
     var answers = {};
     var lines = text.split(/\r?\n/);
-    lines.forEach(function(line) {
       line = line.trim();
       if (!line) return;
       var m = line.match(/^(\d+)[\-\.\)\s]+(.+)$/);
@@ -129,12 +147,13 @@ app.post('/api/quiz/parse-questions', upload.single('file'), async function(req,
     } else if (ext === 'docx') {
       var result = await mammoth.extractRawText({ buffer: req.file.buffer });
       text = result.value;
+    } else if (ext === 'pdf') {
+      text = await parsePdf(req.file.buffer);
     } else {
-      return res.status(400).json({ error: 'Sadece .txt veya .docx desteklenir' });
+      return res.status(400).json({ error: 'Sadece .txt, .docx veya .pdf desteklenir' });
     }
-
-    var lines = text.split(/\r?\n/);
     var questions = {};
+    var lines = text.split(/\r?\n/);
     var currentNo = null;
     var currentQuestion = '';
     var currentSection = '';
