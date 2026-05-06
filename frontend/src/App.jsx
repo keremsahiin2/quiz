@@ -88,6 +88,7 @@ export default function App() {
   const [quizSortMode, setQuizSortMode]         = useState('score');
   const [quizSlots, setQuizSlots]               = useState({});
   const [quizClientId]                          = useState(() => 'client_' + Math.random().toString(36).slice(2));
+  const [quizSessionId, setQuizSessionId]         = useState(() => 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2));
   const [quizGroupCount, setQuizGroupCount]     = useState('');
   const [quizGroupCountSet, setQuizGroupCountSet] = useState(false);
   const quizPollRef                             = useRef(null);
@@ -149,6 +150,7 @@ export default function App() {
         setQuizGroups(d.quizData.groups||[]);
         setQuizScores(d.quizData.scores||{});
         quizScoresRef.current = d.quizData.scores||{};
+        if (d.quizData.sessionId) setQuizSessionId(d.quizData.sessionId);
         if (d.quizData.currentQ) setQuizCurrentQ(d.quizData.currentQ);
         if (d.quizData.groups && d.quizData.groups.length > 0) {
           setQuizGroupCountSet(true);
@@ -177,7 +179,19 @@ export default function App() {
     if (!loggedIn) return;
     const poll = setInterval(() => {
       fetch('/api/quiz').then(r=>r.json()).then(d => {
-        if (!d.quizData) return;
+        if (!d.quizData) {
+          // Etkinlik silindi — local state'i de temizle
+          setQuizGroups([]);
+          setQuizGroupCountSet(false);
+          setQuizGroupCount('');
+          setQuizAnswers({});
+          setQuizAnswerFile(null);
+          setQuizQuestions({});
+          setQuizQFile(null);
+          setQuizScores({});
+          quizScoresRef.current = {};
+          return;
+        }
         const srv = d.quizData;
         if (srv.groups) {
           setQuizGroups(prev => {
@@ -213,7 +227,7 @@ export default function App() {
 
   const saveGroupsFast = (groups) => {
     quizLocalGroupsRef.current = groups;
-    const data = { eventType:quizEventType, groups, scores:quizScoresRef.current, myGroups:quizMyGroups, questions:quizQuestions, questionsFile:quizQFile||null, answers:quizAnswers, answersFile:quizAnswerFile||null };
+    const data = { sessionId:quizSessionId, eventType:quizEventType, groups, scores:quizScoresRef.current, myGroups:quizMyGroups, questions:quizQuestions, questionsFile:quizQFile||null, answers:quizAnswers, answersFile:quizAnswerFile||null };
     fetch('/api/quiz', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({quizData:data}) })
       .then(()=>{ quizLocalGroupsRef.current = null; }).catch(()=>{ quizLocalGroupsRef.current = null; });
   };
@@ -221,7 +235,7 @@ export default function App() {
   const saveQuizData = async (newData, includeCurrentQ = false) => {
     setQuizSaving(true);
     try {
-      const merged = { ...newData, questions:Object.keys(quizQuestions).length>0?quizQuestions:(newData.questions||{}), questionsFile:quizQFile||newData.questionsFile||null, answers:Object.keys(quizAnswers).length>0?quizAnswers:(newData.answers||{}), answersFile:quizAnswerFile||newData.answersFile||null };
+      const merged = { sessionId:quizSessionId, ...newData, questions:Object.keys(quizQuestions).length>0?quizQuestions:(newData.questions||{}), questionsFile:quizQFile||newData.questionsFile||null, answers:Object.keys(quizAnswers).length>0?quizAnswers:(newData.answers||{}), answersFile:quizAnswerFile||newData.answersFile||null };
       const dataToSend = includeCurrentQ ? {...merged, currentQ:quizCurrentQ} : merged;
       const res = await fetch('/api/quiz', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({quizData:dataToSend}) });
       const json = await res.json();
@@ -261,7 +275,7 @@ export default function App() {
         setQuizAnswers(answersFromQuestions); setQuizAnswerFile(file.name+' ('+answersCount+' cevap)');
         const cur = await fetch('/api/quiz').then(r=>r.json()).catch(()=>({quizData:null}));
         const base = cur.quizData||{eventType:quizEventType, groups:quizGroups, scores:quizScores, myGroups:quizMyGroups};
-        await fetch('/api/quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quizData:{...base,answers:answersFromQuestions,answersFile:file.name,questions:qJson.questions,questionsFile:file.name}})}).catch(()=>{});
+        await fetch('/api/quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quizData:{...base,sessionId:quizSessionId,answers:answersFromQuestions,answersFile:file.name,questions:qJson.questions,questionsFile:file.name}})}).catch(()=>{});
         setQuizCombinedFile(file.name+' ('+qJson.count+' soru, '+answersCount+' cevap)');
       } else {
         const formData2 = new FormData(); formData2.append('file', file);
@@ -272,7 +286,7 @@ export default function App() {
         if (cnt > 0) { setQuizAnswers(answers); setQuizAnswerFile(file.name+' ('+cnt+' cevap)'); }
         const cur2 = await fetch('/api/quiz').then(r=>r.json()).catch(()=>({quizData:null}));
         const base2 = cur2.quizData||{eventType:quizEventType,groups:quizGroups,scores:quizScores,myGroups:quizMyGroups};
-        await fetch('/api/quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quizData:{...base2,answers,answersFile:file.name,questions:qJson.questions,questionsFile:file.name}})}).catch(()=>{});
+        await fetch('/api/quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quizData:{...base2,sessionId:quizSessionId,answers,answersFile:file.name,questions:qJson.questions,questionsFile:file.name}})}).catch(()=>{});
         setQuizCombinedFile(file.name+' ('+qJson.count+' soru, '+cnt+' cevap)');
       }
     } catch(e) { setQuizCombinedError('Dosya okunamadı: '+e.message); }
@@ -303,7 +317,11 @@ export default function App() {
     setQuizCurrentQ(1); setQuizScores({}); setQuizDeleteConfirm(false); setQuizDeletePassword('');
     setQuizDeletePasswordError(false); setQuizGroupCount(''); setQuizGroupCountSet(false);
     setQuizCombinedFile(null); setQuizAnswers({}); setQuizAnswerFile(null); setQuizQuestions({}); setQuizQFile(null);
+    setQuizLiveScores({}); setQuizLiveGroups([]);
+    quizScoresRef.current = {};
     quizUserWentBackRef.current = false;
+    // Yeni oturum ID'si oluştur — sunucu eski veriyle merge etmesin
+    setQuizSessionId('sess_' + Date.now() + '_' + Math.random().toString(36).slice(2));
     fetch('/api/quiz',{method:'DELETE'}).catch(()=>{});
   };
 
