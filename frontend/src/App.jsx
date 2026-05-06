@@ -375,7 +375,7 @@ export default function App() {
     };
     return (
       <div style={{minHeight:'110vh',width:'100%',background:'#07090f',display:'flex',justifyContent:'center',alignItems:'center',padding:'0 20px',boxSizing:'border-box',fontFamily:'"DM Sans",system-ui,sans-serif'}}>
-        <div style={{position:'relative',width:'100%',maxWidth:320}}>
+        <div style={{position:'relative',width:'100%',maxWidth:420}}>
           {/* Logo — kartın üstüne taşan */}
           <div style={{position:'absolute',top:0,left:'50%',transform:'translate(-50%, -40%)',zIndex:2,display:'flex',justifyContent:'center'}}>
             <div style={{width:160,height:160,borderRadius:'50%',overflow:'hidden',background:'transparent',display:'flex',alignItems:'center',justifyContent:'center'}}>
