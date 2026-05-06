@@ -374,25 +374,80 @@ export default function App() {
       }
     };
     return (
-      <div style={S.page}>
-        <div style={{display:'flex',justifyContent:'center',padding:'0 24px',marginTop:'22vh'}}>
-          <div style={{...S.loginCard, maxWidth:320, textAlign:'center', width:'100%', border:'none'}}>
-            <div style={{fontSize:36, marginBottom:12}}>🏆</div>
-            <div style={{fontSize:15,fontWeight:700,color:'#fff',marginBottom:4}}>Quiz Night Girişi</div>
-            <div style={{fontSize:12,color:'#475569',marginBottom:20}}>Şifrenizi girin</div>
-            {pinError && <div style={{...S.errBox,marginBottom:14}}>❌ Yanlış şifre, tekrar deneyin</div>}
-            <div style={{display:'flex',justifyContent:'center',gap:14,marginBottom:28}}>
+      <div style={{minHeight:'100vh',width:'100%',background:'#07090f',display:'flex',justifyContent:'center',alignItems:'center',padding:'0 20px',boxSizing:'border-box',fontFamily:'"DM Sans",system-ui,sans-serif'}}>
+        <div style={{position:'relative',width:'100%',maxWidth:360}}>
+          {/* Logo — kartın üstüne taşan */}
+          <div style={{position:'absolute',top:0,left:'50%',transform:'translate(-50%, -54%)',zIndex:2,display:'flex',justifyContent:'center'}}>
+            <div style={{width:110,height:110,borderRadius:'50%',overflow:'hidden',background:'transparent',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <img src="/logo.png" alt="Sosyal Sanathane"
+                style={{width:'100%',height:'100%',objectFit:'contain'}} />
+            </div>
+          </div>
+          {/* Kart */}
+          <div style={{background:'#0d1120',border:'1px solid #1e2540',borderRadius:26,paddingTop:76,paddingBottom:28,paddingLeft:24,paddingRight:24,textAlign:'center',position:'relative',zIndex:1,boxSizing:'border-box',boxShadow:'0 8px 40px rgba(0,0,0,0.5)'}}>
+            <div style={{fontSize:18,fontWeight:800,color:'#ffffff',marginBottom:4,letterSpacing:0.2}}>Quiz Night Girişi</div>
+            <div style={{fontSize:13,color:'#5a6a82',marginBottom:20}}>Şifrenizi girin</div>
+            {pinError && (
+              <div style={{background:'#1f0f0f',border:'1px solid #7f1d1d',borderRadius:10,padding:'8px 14px',color:'#fca5a5',fontSize:12,marginBottom:14}}>
+                ❌ Yanlış şifre, tekrar deneyin
+              </div>
+            )}
+            {/* PIN dots */}
+            <div style={{display:'flex',justifyContent:'center',gap:18,marginBottom:28}}>
               {[0,1,2,3].map(i=>(
-                <div key={i} style={{width:16,height:16,borderRadius:'50%',background:pinInput.length>i?'#fbbf24':'#1a2035',border:'2px solid '+(pinInput.length>i?'#fbbf24':'#374151'),transition:'background 0.15s'}}/>
+                <div key={i} style={{
+                  width:16,height:16,borderRadius:'50%',
+                  background: pinError ? '#ef4444' : pinInput.length>i ? '#ffffff' : 'transparent',
+                  border: '2px solid ' + (pinError ? '#ef4444' : pinInput.length>i ? '#ffffff' : '#3a4460'),
+                  transition:'all 0.15s',
+                  boxShadow: pinInput.length>i && !pinError ? '0 0 8px rgba(255,255,255,0.3)' : 'none'
+                }}/>
               ))}
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:16}}>
+            {/* Numpad */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
               {NUMPAD.flat().map((k,i)=>(
                 k==='' ? <div key={i}/> :
-                k==='⌫' ? <button key={i} onClick={()=>{setPinInput(p=>p.slice(0,-1));setPinError(false);}}
-                  style={{padding:'16px 0',background:'#111827',color:'#94a3b8',border:'1px solid #1a2035',borderRadius:12,fontSize:20,cursor:'pointer',fontWeight:600}}>⌫</button> :
-                <button key={i} onClick={()=>numpadPress(k)}
-                  style={{padding:'16px 0',background:'#0d1120',color:'#e2e8f0',border:'1px solid #1a2035',borderRadius:12,fontSize:22,cursor:'pointer',fontWeight:700}}>{k}</button>
+                k==='⌫' ? (
+                  <button key={i} onClick={()=>{setPinInput(p=>p.slice(0,-1));setPinError(false);}}
+                    style={{
+                      padding:'18px 0',
+                      background:'#111827',
+                      color:'#8899aa',
+                      border:'1px solid #1e2540',
+                      borderRadius:14,
+                      fontSize:22,
+                      cursor:'pointer',
+                      fontWeight:500,
+                      display:'flex',
+                      alignItems:'center',
+                      justifyContent:'center',
+                      transition:'background 0.1s',
+                    }}
+                    onMouseDown={e=>{e.currentTarget.style.background='#1a2235';}}
+                    onMouseUp={e=>{e.currentTarget.style.background='#111827';}}
+                    onTouchStart={e=>{e.currentTarget.style.background='#1a2235';}}
+                    onTouchEnd={e=>{e.currentTarget.style.background='#111827';}}
+                  >⌫</button>
+                ) : (
+                  <button key={i} onClick={()=>numpadPress(k)}
+                    style={{
+                      padding:'18px 0',
+                      background:'#111827',
+                      color:'#e2e8f0',
+                      border:'1px solid #1e2540',
+                      borderRadius:14,
+                      fontSize:24,
+                      cursor:'pointer',
+                      fontWeight:600,
+                      transition:'background 0.1s',
+                    }}
+                    onMouseDown={e=>{e.currentTarget.style.background='#1a2a3a';}}
+                    onMouseUp={e=>{e.currentTarget.style.background='#111827';}}
+                    onTouchStart={e=>{e.currentTarget.style.background='#1a2a3a';}}
+                    onTouchEnd={e=>{e.currentTarget.style.background='#111827';}}
+                  >{k}</button>
+                )
               ))}
             </div>
           </div>
