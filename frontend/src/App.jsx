@@ -230,14 +230,33 @@ export default function App() {
   // Heartbeat — seçilen grupların kilidini canlı tut (15 saniyede bir)
   useEffect(() => {
     if (!loggedIn || quizMyGroups.length === 0) return;
-    const hb = setInterval(() => {
+
+    const sendHeartbeat = () => {
       fetch('/api/quiz/heartbeat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientId: quizClientId, groups: quizMyGroups })
-      }).catch(() => {});
-    }, 15000);
-    return () => clearInterval(hb);
+      })
+        .then(r => r.json())
+        .then(data => {
+          // Başkası tarafından alınmış grupları seçimden çıkar
+          if (data.failed && data.failed.length > 0) {
+            setQuizMyGroups(prev => prev.filter(n => !data.failed.includes(String(n))));
+          }
+        })
+        .catch(() => {});
+    };
+
+    const hb = setInterval(sendHeartbeat, 15000);
+
+    // Telefon/sekme uyandığında hemen heartbeat gönder
+    const onVisible = () => { if (document.visibilityState === 'visible') sendHeartbeat(); };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      clearInterval(hb);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [loggedIn, quizMyGroups]);
 
   const saveGroupsFast = (groups) => {

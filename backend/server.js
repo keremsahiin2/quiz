@@ -101,18 +101,24 @@ app.post('/api/quiz/unlock', function(req, res) {
   res.json({ success: true });
 });
 
-// Heartbeat — kilitleri canlı tut
+// Heartbeat — kilitleri canlı tut; süresi dolmuş kilitleri yeniden al
 app.post('/api/quiz/heartbeat', function(req, res) {
   cleanExpiredLocks();
   var clientId = req.body.clientId;
   var groups = req.body.groups || [];
+  var failed = []; // başkası almış gruplar
   groups.forEach(function(gno) {
     gno = String(gno);
-    if (quizSlotLocks[gno] && quizSlotLocks[gno].clientId === clientId) {
-      quizSlotLocks[gno].timestamp = Date.now();
+    var existing = quizSlotLocks[gno];
+    if (!existing || existing.clientId === clientId) {
+      // Serbest ya da zaten bizim — yenile veya yeniden al
+      quizSlotLocks[gno] = { clientId: clientId, timestamp: Date.now() };
+    } else {
+      // Başkası almış
+      failed.push(gno);
     }
   });
-  res.json({ success: true });
+  res.json({ success: true, failed: failed });
 });
 
 app.post('/api/quiz', async function(req, res) {
