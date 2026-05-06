@@ -30,7 +30,7 @@ app.use(cors());
 app.use(express.json());
 
 // ─── JSONBin ───────────────────────────────────────────────────────────────────
-const JSONBIN_BIN_ID  = '69fb392faaba8821977a83b9';
+const JSONBIN_BIN_ID  = '69fb3b99856a682189b2a888';
 const JSONBIN_API_KEY = '$2a$10$cip66R4w.2tIzZWE8g9YkO1PUm.m8qnmKKKb0lZFEFGAoXyxqIPZm';
 
 let jsonbinCache      = null;
