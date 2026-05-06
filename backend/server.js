@@ -71,7 +71,7 @@ app.get('/api/quiz', async function(req, res) {
   cleanExpiredLocks();
   try {
     var rec = await getJsonbinRecord();
-    res.json({ quizData: rec.quizData || null, slotLocks: quizSlotLocks });
+    res.json({ quizData: rec.quizDataStandalone || null, slotLocks: quizSlotLocks });
   } catch(e) {
     res.json({ quizData: null, slotLocks: {} });
   }
@@ -126,7 +126,7 @@ app.post('/api/quiz', async function(req, res) {
     const quizData = req.body.quizData;
     if (!quizData) return res.status(400).json({ error: 'quizData gerekli' });
     var rec = await getJsonbinRecord();
-    var existing = rec.quizData;
+    var existing = rec.quizDataStandalone;
 
     // Aynı oturum (sessionId eşleşiyor) ise merge yap; farklı oturum veya yeni etkinlik ise direkt yaz
     var sameSession = existing
@@ -147,14 +147,14 @@ app.post('/api/quiz', async function(req, res) {
           return g.name ? g : (found || g);
         });
       }
-      rec.quizData = Object.assign({}, existing, quizData, { scores: mergedScores, groups: mergedGroups });
+      rec.quizDataStandalone = Object.assign({}, existing, quizData, { scores: mergedScores, groups: mergedGroups });
     } else {
       // Yeni oturum — eski veriyi tamamen sil, yenisini yaz
-      rec.quizData = quizData;
+      rec.quizDataStandalone = quizData;
     }
 
     jsonbinCacheDirty = true;
-    var mergedScores = rec.quizData.scores;
+    var mergedScores = rec.quizDataStandalone.scores;
     res.json({ success: true, mergedScores: mergedScores });
     flushJsonbinCache().catch(function(e) { console.error('Quiz POST flush hatasi:', e.message); });
   } catch(e) {
@@ -164,7 +164,7 @@ app.post('/api/quiz', async function(req, res) {
 
 app.delete('/api/quiz', async function(req, res) {
   if (jsonbinCache) {
-    jsonbinCache.quizData = null;
+    jsonbinCache.quizDataStandalone = null;
     jsonbinCacheDirty = true;
   }
   quizSlotLocks = {};
