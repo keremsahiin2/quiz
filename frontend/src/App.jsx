@@ -374,17 +374,17 @@ export default function App() {
       }
     };
     return (
-      <div style={{minHeight:'100vh',width:'100%',background:'#07090f',display:'flex',justifyContent:'center',alignItems:'center',padding:'0 20px',boxSizing:'border-box',fontFamily:'"DM Sans",system-ui,sans-serif'}}>
-        <div style={{position:'relative',width:'100%',maxWidth:360}}>
+      <div style={{minHeight:'110vh',width:'100%',background:'#07090f',display:'flex',justifyContent:'center',alignItems:'center',padding:'0 20px',boxSizing:'border-box',fontFamily:'"DM Sans",system-ui,sans-serif'}}>
+        <div style={{position:'relative',width:'100%',maxWidth:320}}>
           {/* Logo — kartın üstüne taşan */}
-          <div style={{position:'absolute',top:0,left:'50%',transform:'translate(-50%, -54%)',zIndex:2,display:'flex',justifyContent:'center'}}>
-            <div style={{width:110,height:110,borderRadius:'50%',overflow:'hidden',background:'transparent',display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{position:'absolute',top:0,left:'50%',transform:'translate(-50%, -40%)',zIndex:2,display:'flex',justifyContent:'center'}}>
+            <div style={{width:160,height:160,borderRadius:'50%',overflow:'hidden',background:'transparent',display:'flex',alignItems:'center',justifyContent:'center'}}>
               <img src="/logo.png" alt="Sosyal Sanathane"
                 style={{width:'100%',height:'100%',objectFit:'contain'}} />
             </div>
           </div>
           {/* Kart */}
-          <div style={{background:'#0d1120',border:'1px solid #1e2540',borderRadius:26,paddingTop:76,paddingBottom:28,paddingLeft:24,paddingRight:24,textAlign:'center',position:'relative',zIndex:1,boxSizing:'border-box',boxShadow:'0 8px 40px rgba(0,0,0,0.5)'}}>
+          <div style={{background:'#0d1120',border:'1px solid #1e2540',borderRadius:26,paddingTop:60,paddingBottom:28,paddingLeft:24,paddingRight:24,textAlign:'center',position:'relative',zIndex:1,boxSizing:'border-box',boxShadow:'0 8px 40px rgba(0,0,0,0.5)'}}>
             <div style={{fontSize:18,fontWeight:800,color:'#ffffff',marginBottom:4,letterSpacing:0.2}}>Quiz Night Girişi</div>
             <div style={{fontSize:13,color:'#5a6a82',marginBottom:20}}>Şifrenizi girin</div>
             {pinError && (
