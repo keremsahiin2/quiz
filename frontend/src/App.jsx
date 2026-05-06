@@ -87,6 +87,7 @@ export default function App() {
   const [quizPickerOpen, setQuizPickerOpen]     = useState(false);
   const [quizSortMode, setQuizSortMode]         = useState('score');
   const [quizSlots, setQuizSlots]               = useState({});
+  const [quizLockError, setQuizLockError]       = useState(''); // kilit başarısız mesajı
   const [quizClientId]                          = useState(() => 'client_' + Math.random().toString(36).slice(2));
   const [quizSessionId, setQuizSessionId]         = useState(() => 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2));
   const [quizGroupCount, setQuizGroupCount]     = useState('');
@@ -193,6 +194,7 @@ export default function App() {
           return;
         }
         const srv = d.quizData;
+        if (d.slotLocks) setQuizSlots(d.slotLocks);
         if (srv.groups) {
           setQuizGroups(prev => {
             if (quizGroupEditingRef.current) return prev;
@@ -224,6 +226,19 @@ export default function App() {
     quizPollRef.current = poll;
     return () => clearInterval(poll);
   }, [loggedIn]);
+
+  // Heartbeat — seçilen grupların kilidini canlı tut (15 saniyede bir)
+  useEffect(() => {
+    if (!loggedIn || quizMyGroups.length === 0) return;
+    const hb = setInterval(() => {
+      fetch('/api/quiz/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: quizClientId, groups: quizMyGroups })
+      }).catch(() => {});
+    }, 15000);
+    return () => clearInterval(hb);
+  }, [loggedIn, quizMyGroups]);
 
   const saveGroupsFast = (groups) => {
     quizLocalGroupsRef.current = groups;
@@ -607,7 +622,36 @@ export default function App() {
   if (quizStep === 'groups') {
     const updateGroup = (idx,field,val) => { const updated=quizGroups.map((g,i)=>i===idx?{...g,[field]:val}:g); setQuizGroups(updated); };
     const saveGroups  = (updated) => { saveGroupsFast(updated); };
-    const toggleMyGroup = (no) => { setQuizMyGroups(prev=>prev.includes(no)?prev.filter(n=>n!==no):[...prev,no]); };
+    const toggleMyGroup = async (no) => {
+      const isMine = quizMyGroups.includes(no);
+      if (isMine) {
+        // Kilidi bırak
+        fetch('/api/quiz/unlock', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ groupNo: no, clientId: quizClientId })
+        }).catch(() => {});
+        setQuizMyGroups(prev => prev.filter(n => n !== no));
+      } else {
+        // Kilit almayı dene
+        try {
+          const res = await fetch('/api/quiz/lock', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ groupNo: no, clientId: quizClientId })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setQuizMyGroups(prev => [...prev, no]);
+            setQuizLockError('');
+          } else {
+            setQuizLockError(`Grup ${no} zaten başka bir puantör tarafından seçildi!`);
+            setTimeout(() => setQuizLockError(''), 3000);
+          }
+        } catch {
+          setQuizLockError('Bağlantı hatası, tekrar deneyin.');
+          setTimeout(() => setQuizLockError(''), 3000);
+        }
+      }
+    };
     const handleStart = () => {
       const newScores={...quizScores}; quizGroups.forEach(g=>{if(!newScores[g.no])newScores[g.no]={};});
       setQuizScores(newScores); const data={eventType:quizEventType,groups:quizGroups,scores:newScores,myGroups:quizMyGroups};
@@ -617,29 +661,43 @@ export default function App() {
     return (
       <div style={S.page}>
         <div style={S.header}>
-          <div style={S.headerLeft}><button style={{...S.smallBtn,marginRight:4}} onClick={()=>setQuizRole(null)}>← Geri</button><span style={{fontSize:13,fontWeight:800,letterSpacing:2,color:'#fff'}}>🏆 QUIZ NIGHT</span></div>
+          <div style={S.headerLeft}><button style={{...S.smallBtn,marginRight:4}} onClick={()=>{
+            // Kilitleri bırak
+            quizMyGroups.forEach(no => {
+              fetch('/api/quiz/unlock', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({groupNo:no, clientId:quizClientId}) }).catch(()=>{});
+            });
+            setQuizRole(null);
+          }}>← Geri</button><span style={{fontSize:13,fontWeight:800,letterSpacing:2,color:'#fff'}}>🏆 QUIZ NIGHT</span></div>
           <div style={S.headerRight}>
             <button onClick={()=>setQuizStep('results')} style={{...S.smallBtn,color:'#fbbf24',borderColor:'#fbbf2444'}}>📊 Sonuçlar</button>
             <span style={{fontSize:10,color:'#22c55e'}}>🔄 Canlı</span>
           </div>
         </div>
+        {quizLockError && (
+          <div style={{position:'fixed',top:70,left:'50%',transform:'translateX(-50%)',zIndex:100,background:'#1f0f0f',border:'1px solid #7f1d1d',borderRadius:10,padding:'10px 18px',color:'#fca5a5',fontSize:13,fontWeight:700,maxWidth:320,textAlign:'center',boxShadow:'0 4px 24px #00000088'}}>
+            🔒 {quizLockError}
+          </div>
+        )}
         <div style={{maxWidth:480,margin:'0 auto',padding:'20px 18px'}}>
           <div style={{fontSize:13,fontWeight:700,color:'#94a3b8',marginBottom:4,textTransform:'uppercase',letterSpacing:1}}>Gruplar · {quizGroups.length} grup</div>
           <div style={{fontSize:11,color:'#475569',marginBottom:16}}>Bir gruba tıklayarak o gruba bakacağınızı belirtin.</div>
           <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:20}}>
             {quizGroups.map((g,idx)=>{
               const isMine=quizMyGroups.includes(g.no);
-              return (<div key={idx} style={{background:isMine?'#12100a':'#0d1120',border:'2px solid '+(isMine?'#fbbf24':'#1a2035'),borderRadius:12,padding:'12px 14px',display:'flex',alignItems:'center',gap:10,transition:'all 0.2s'}}>
-                <button onClick={()=>toggleMyGroup(g.no)} style={{width:42,height:42,borderRadius:10,border:'2px solid',flexShrink:0,cursor:'pointer',fontSize:16,fontWeight:800,background:isMine?'#fbbf24':'#111827',color:isMine?'#000':'#475569',borderColor:isMine?'#fbbf24':'#374151',transition:'all 0.15s'}}>{isMine?'✓':g.no}</button>
+              const lockInfo = quizSlots[g.no];
+              const isLockedByOther = lockInfo && lockInfo.clientId !== quizClientId;
+              return (<div key={idx} style={{background:isMine?'#12100a':isLockedByOther?'#0d0d0d':'#0d1120',border:'2px solid '+(isMine?'#fbbf24':isLockedByOther?'#374151':'#1a2035'),borderRadius:12,padding:'12px 14px',display:'flex',alignItems:'center',gap:10,transition:'all 0.2s',opacity:isLockedByOther?0.55:1}}>
+                <button onClick={()=>!isLockedByOther&&toggleMyGroup(g.no)} style={{width:42,height:42,borderRadius:10,border:'2px solid',flexShrink:0,cursor:isLockedByOther?'not-allowed':'pointer',fontSize:isLockedByOther?18:16,fontWeight:800,background:isMine?'#fbbf24':isLockedByOther?'#1a1a1a':'#111827',color:isMine?'#000':isLockedByOther?'#374151':'#475569',borderColor:isMine?'#fbbf24':isLockedByOther?'#374151':'#374151',transition:'all 0.15s'}}>{isMine?'✓':isLockedByOther?'🔒':g.no}</button>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:11,color:isMine?'#fbbf24':'#475569',fontWeight:700,marginBottom:3}}>{isMine?'✓ Seçildi':`Grup ${g.no}`}</div>
-                  <input value={g.name} onChange={e=>updateGroup(idx,'name',e.target.value)}
+                  <div style={{fontSize:11,color:isMine?'#fbbf24':isLockedByOther?'#374151':'#475569',fontWeight:700,marginBottom:3}}>{isMine?'✓ Seçildi':isLockedByOther?'🔒 Başkası seçti':`Grup ${g.no}`}</div>
+                  <input value={g.name} onChange={e=>!isLockedByOther&&updateGroup(idx,'name',e.target.value)}
                     onFocus={()=>{quizGroupEditingRef.current=true;}}
                     onBlur={e=>{quizGroupEditingRef.current=false;saveGroups(quizGroups.map((gr,i)=>i===idx?{...gr,name:e.target.value}:gr));}}
                     placeholder={`Grup ${g.no} adı (opsiyonel)`}
-                    style={{...S.input,marginBottom:0,padding:'6px 10px',fontSize:13,background:isMine?'#1a1000':'#07090f',border:'1px solid '+(isMine?'#fbbf2444':'#1a2035')}}/>
+                    disabled={isLockedByOther}
+                    style={{...S.input,marginBottom:0,padding:'6px 10px',fontSize:13,background:isMine?'#1a1000':isLockedByOther?'#0a0a0a':'#07090f',border:'1px solid '+(isMine?'#fbbf2444':isLockedByOther?'#1a2035':'#1a2035'),color:isLockedByOther?'#374151':'inherit',cursor:isLockedByOther?'not-allowed':'text'}}/>
                 </div>
-                {idx===quizGroups.length-1&&quizGroups.length>1&&(
+                {idx===quizGroups.length-1&&quizGroups.length>1&&!isLockedByOther&&(
                   <button onClick={()=>{quizGroupEditingRef.current=true;const updated=quizGroups.slice(0,-1);setQuizGroups(updated);setQuizMyGroups(prev=>prev.filter(n=>n!==g.no));saveGroups(updated);quizGroupEditingRef.current=false;}}
                     style={{width:36,height:36,borderRadius:8,border:'1px solid #374151',cursor:'pointer',background:'#1f0f0f',color:'#f87171',fontSize:16,fontWeight:700,flexShrink:0}}>×</button>
                 )}

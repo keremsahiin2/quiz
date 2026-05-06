@@ -56,14 +56,63 @@ async function flushJsonbinCache() {
 
 // ─── Quiz Night API ────────────────────────────────────────────────────────────
 var quizSlotLocks = {};
+var LOCK_TTL_MS = 30000; // 30 saniye heartbeat gelmezse kilit düşer
+
+function cleanExpiredLocks() {
+  var now = Date.now();
+  Object.keys(quizSlotLocks).forEach(function(gno) {
+    if (quizSlotLocks[gno] && (now - quizSlotLocks[gno].timestamp) > LOCK_TTL_MS) {
+      delete quizSlotLocks[gno];
+    }
+  });
+}
 
 app.get('/api/quiz', async function(req, res) {
+  cleanExpiredLocks();
   try {
     var rec = await getJsonbinRecord();
     res.json({ quizData: rec.quizData || null, slotLocks: quizSlotLocks });
   } catch(e) {
     res.json({ quizData: null, slotLocks: {} });
   }
+});
+
+// Grup kilidi al
+app.post('/api/quiz/lock', function(req, res) {
+  cleanExpiredLocks();
+  var groupNo = String(req.body.groupNo);
+  var clientId = req.body.clientId;
+  if (!groupNo || !clientId) return res.status(400).json({ error: 'groupNo ve clientId gerekli' });
+  var existing = quizSlotLocks[groupNo];
+  if (existing && existing.clientId !== clientId) {
+    return res.json({ success: false, reason: 'locked' });
+  }
+  quizSlotLocks[groupNo] = { clientId: clientId, timestamp: Date.now() };
+  res.json({ success: true });
+});
+
+// Grup kilidini bırak
+app.post('/api/quiz/unlock', function(req, res) {
+  var groupNo = String(req.body.groupNo);
+  var clientId = req.body.clientId;
+  if (quizSlotLocks[groupNo] && quizSlotLocks[groupNo].clientId === clientId) {
+    delete quizSlotLocks[groupNo];
+  }
+  res.json({ success: true });
+});
+
+// Heartbeat — kilitleri canlı tut
+app.post('/api/quiz/heartbeat', function(req, res) {
+  cleanExpiredLocks();
+  var clientId = req.body.clientId;
+  var groups = req.body.groups || [];
+  groups.forEach(function(gno) {
+    gno = String(gno);
+    if (quizSlotLocks[gno] && quizSlotLocks[gno].clientId === clientId) {
+      quizSlotLocks[gno].timestamp = Date.now();
+    }
+  });
+  res.json({ success: true });
 });
 
 app.post('/api/quiz', async function(req, res) {
