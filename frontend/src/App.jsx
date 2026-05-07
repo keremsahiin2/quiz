@@ -92,6 +92,7 @@ export default function App() {
   const [quizSessionId, setQuizSessionId]         = useState(() => 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2));
   const [quizGroupCount, setQuizGroupCount]     = useState('');
   const [quizGroupCountSet, setQuizGroupCountSet] = useState(false);
+  const [quizIsFlex, setQuizIsFlex]             = useState(false);
   const quizPollRef                             = useRef(null);
   const [quizLiveScores, setQuizLiveScores]     = useState({});
   const [quizLiveGroups, setQuizLiveGroups]     = useState([]);
@@ -104,22 +105,35 @@ export default function App() {
     }
   };
 
+  // Flex puanlama tablosu (dosya başında "flex" varsa kullanılır)
+  const FLEX_POINTS = {
+    1:5,2:5,3:5,4:10,5:15,6:20,7:25,8:30,9:35,10:40,
+    11:5,12:5,13:5,14:5,15:5,16:10,17:10,18:10,19:10,20:10,
+    21:5,22:10,23:15,24:20,25:30,
+    26:5,27:5,28:5,29:10,30:15,31:20,32:25,33:30,34:35,35:40,
+    36:5,37:10,38:10,39:15,40:20,
+    41:5,42:10,43:15,44:20,45:30,
+    46:5,47:10,48:15,49:20,50:25
+  };
+
   // Dinamik puanlama:
+  // Flex mod aktifse FLEX_POINTS tablosunu kullan
   // Soru sayısı > 45 ise her soru 10 puan
   // Soru sayısı <= 45 ise her 10 soruda değer 10 artar (1-10→10, 11-20→20, 21-30→30, 31-40→40, 41-45→50)
-  const getQuizPoint = (totalQuestions, qNo) => {
+  const getQuizPoint = (totalQuestions, qNo, isFlex) => {
+    if (isFlex) return FLEX_POINTS[qNo] || 5;
     if (totalQuestions > 45) return 10;
     return Math.ceil(qNo / 10) * 10;
   };
 
-  const calcGroupScore = (groupNo, eventType, scores, overrideTotalQ) => {
+  const calcGroupScore = (groupNo, eventType, scores, overrideTotalQ, isFlex) => {
     const ev = QUIZ_EVENTS[eventType] || QUIZ_EVENTS['genelkultur'];
     if (!ev) return 0;
     const gs = scores[groupNo] || {};
     let total = 0;
     const qCount = overrideTotalQ || ev.totalQ;
     for (let q = 1; q <= qCount; q++) {
-      if (gs[q]) total += getQuizPoint(qCount, q);
+      if (gs[q]) total += getQuizPoint(qCount, q, isFlex);
     }
     return total;
   };
@@ -134,6 +148,7 @@ export default function App() {
         setQuizLiveGroups(d.quizData.groups||[]);
         setQuizScores(d.quizData.scores||{});
         setQuizGroups(d.quizData.groups||[]);
+        if (d.quizData.isFlex) setQuizIsFlex(true);
       } else {
         setQuizLiveScores(quizScores);
         setQuizLiveGroups(quizGroups);
@@ -152,6 +167,7 @@ export default function App() {
         setQuizScores(d.quizData.scores||{});
         quizScoresRef.current = d.quizData.scores||{};
         if (d.quizData.sessionId) setQuizSessionId(d.quizData.sessionId);
+        if (d.quizData.isFlex) setQuizIsFlex(true);
         if (d.quizData.currentQ) setQuizCurrentQ(d.quizData.currentQ);
         if (d.quizData.groups && d.quizData.groups.length > 0) {
           setQuizGroupCountSet(true);
@@ -261,7 +277,7 @@ export default function App() {
 
   const saveGroupsFast = (groups) => {
     quizLocalGroupsRef.current = groups;
-    const data = { sessionId:quizSessionId, eventType:quizEventType, groups, scores:quizScoresRef.current, myGroups:quizMyGroups, questions:quizQuestions, questionsFile:quizQFile||null, answers:quizAnswers, answersFile:quizAnswerFile||null };
+    const data = { sessionId:quizSessionId, eventType:quizEventType, groups, scores:quizScoresRef.current, myGroups:quizMyGroups, questions:quizQuestions, questionsFile:quizQFile||null, answers:quizAnswers, answersFile:quizAnswerFile||null, isFlex:quizIsFlex };
     fetch('/api/quiz', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({quizData:data}) })
       .then(()=>{ quizLocalGroupsRef.current = null; }).catch(()=>{ quizLocalGroupsRef.current = null; });
   };
@@ -269,7 +285,7 @@ export default function App() {
   const saveQuizData = async (newData, includeCurrentQ = false) => {
     setQuizSaving(true);
     try {
-      const merged = { sessionId:quizSessionId, ...newData, questions:Object.keys(quizQuestions).length>0?quizQuestions:(newData.questions||{}), questionsFile:quizQFile||newData.questionsFile||null, answers:Object.keys(quizAnswers).length>0?quizAnswers:(newData.answers||{}), answersFile:quizAnswerFile||newData.answersFile||null };
+      const merged = { sessionId:quizSessionId, ...newData, questions:Object.keys(quizQuestions).length>0?quizQuestions:(newData.questions||{}), questionsFile:quizQFile||newData.questionsFile||null, answers:Object.keys(quizAnswers).length>0?quizAnswers:(newData.answers||{}), answersFile:quizAnswerFile||newData.answersFile||null, isFlex:quizIsFlex };
       const dataToSend = includeCurrentQ ? {...merged, currentQ:quizCurrentQ} : merged;
       const res = await fetch('/api/quiz', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({quizData:dataToSend}) });
       const json = await res.json();
@@ -301,6 +317,24 @@ export default function App() {
       const qRes = await fetch('/api/quiz/parse-questions', { method:'POST', body:formData });
       const qJson = await safeJsonParse(qRes);
       if (qJson.error) throw new Error(qJson.error);
+      // Flex mod: sunucudan gelen ham metin yerine dosyayı tekrar okuyup ilk kelimeye bakıyoruz
+      // parse-questions endpoint'i firstLine döndürmüyor, bu yüzden dosyayı text olarak da parse ediyoruz
+      let detectedFlex = false;
+      try {
+        const textFormData = new FormData(); textFormData.append('file', file);
+        // txt ise direkt oku, değilse parse-answers'ın döndürdüğü ham metinden anlayamayız;
+        // ancak dosya adından bağımsız olarak sunucu tarafında firstLine eklenirse daha sağlıklı olur.
+        // Şimdilik: dosya txt ise FileReader ile oku, docx/pdf için sunucu yanıtına firstLine eklenecek
+        if (file.name.toLowerCase().endsWith('.txt')) {
+          const rawText = await file.text();
+          const firstLine = rawText.split(/\r?\n/)[0].trim().toLowerCase();
+          detectedFlex = firstLine === 'flex';
+        } else {
+          // docx / pdf — sunucu firstLine döndürüyor
+          detectedFlex = !!(qJson.firstLine && qJson.firstLine.trim().toLowerCase() === 'flex');
+        }
+      } catch {}
+      setQuizIsFlex(detectedFlex);
       setQuizQuestions(qJson.questions||{}); setQuizQFile(file.name+' ('+qJson.count+' soru)'); setQuizHostQ(1);
       const answersFromQuestions = {};
       Object.entries(qJson.questions||{}).forEach(([no, q]) => { if (q.answer && q.answer.trim()) answersFromQuestions[parseInt(no)] = q.answer.trim(); });
@@ -351,7 +385,7 @@ export default function App() {
     setQuizCurrentQ(1); setQuizScores({}); setQuizDeleteConfirm(false); setQuizDeletePassword('');
     setQuizDeletePasswordError(false); setQuizGroupCount(''); setQuizGroupCountSet(false);
     setQuizCombinedFile(null); setQuizAnswers({}); setQuizAnswerFile(null); setQuizQuestions({}); setQuizQFile(null);
-    setQuizLiveScores({}); setQuizLiveGroups([]);
+    setQuizLiveScores({}); setQuizLiveGroups([]); setQuizIsFlex(false);
     quizScoresRef.current = {};
     quizUserWentBackRef.current = false;
     // Yeni oturum ID'si oluştur — sunucu eski veriyle merge etmesin
@@ -558,7 +592,9 @@ export default function App() {
       const ev = QUIZ_EVENTS[quizEventType];
       const displayScores = Object.keys(quizLiveScores).length > 0 ? quizLiveScores : quizScores;
       const displayGroups = quizLiveGroups.length > 0 ? quizLiveGroups : quizGroups;
-      const allGroupScores = displayGroups.map(g=>({...g,score:calcGroupScore(g.no,quizEventType,displayScores,totalQ)})).sort((a,b)=>b.score-a.score);
+      const hostLoadedQCount = Object.keys(quizQuestions).length;
+      const hostTotalQ = hostLoadedQCount > 0 ? hostLoadedQCount : (ev ? ev.totalQ : 55);
+      const allGroupScores = displayGroups.map(g=>({...g,score:calcGroupScore(g.no,quizEventType,displayScores,hostTotalQ,quizIsFlex)})).sort((a,b)=>b.score-a.score);
       const maxScore = allGroupScores.length > 0 ? allGroupScores[0].score : 0;
       const medals = ['🥇','🥈','🥉'];
       const sortedByScore = [...allGroupScores].sort((a,b)=>b.score-a.score);
@@ -794,14 +830,14 @@ export default function App() {
   // Puanlama
   if (quizStep === 'scoring') {
     const myGroupObjs = quizGroups.filter(g=>quizMyGroups.includes(g.no));
-    const qPoint = getQuizPoint(totalQ, quizCurrentQ);
+    const qPoint = getQuizPoint(totalQ, quizCurrentQ, quizIsFlex);
     const toggleAnswer = async (groupNo) => {
       const gs=quizScoresRef.current[groupNo]||{}; const newGs={...gs,[quizCurrentQ]:!gs[quizCurrentQ]};
       const newScores={...quizScoresRef.current,[groupNo]:newGs}; quizScoresRef.current=newScores; setQuizScores(newScores);
       try {
         let serverBase={};
         try{const cur=await fetch('/api/quiz').then(r=>r.json());if(cur.quizData)serverBase=cur.quizData;}catch{}
-        const data={...serverBase,eventType:quizEventType,groups:quizGroups,scores:newScores,myGroups:quizMyGroups,currentQ:quizCurrentQ,questions:Object.keys(quizQuestions).length>0?quizQuestions:(serverBase.questions||{}),questionsFile:quizQFile||serverBase.questionsFile||null,answers:Object.keys(quizAnswers).length>0?quizAnswers:(serverBase.answers||{}),answersFile:quizAnswerFile||serverBase.answersFile||null};
+        const data={...serverBase,eventType:quizEventType,groups:quizGroups,scores:newScores,myGroups:quizMyGroups,currentQ:quizCurrentQ,isFlex:quizIsFlex,questions:Object.keys(quizQuestions).length>0?quizQuestions:(serverBase.questions||{}),questionsFile:quizQFile||serverBase.questionsFile||null,answers:Object.keys(quizAnswers).length>0?quizAnswers:(serverBase.answers||{}),answersFile:quizAnswerFile||serverBase.answersFile||null};
         await fetch('/api/quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quizData:data})});
       }catch{}
     };
@@ -828,9 +864,11 @@ export default function App() {
           <div style={{background:'#1a2035',borderRadius:6,height:6,marginBottom:10,overflow:'hidden'}}>
             <div style={{height:'100%',background:'linear-gradient(90deg,#fbbf24,#f59e0b)',width:progressPct+'%',borderRadius:6,transition:'width 0.3s'}}/>
           </div>
-          <div style={{background: totalQ > 45 ? '#0a1a0a' : '#0a0e1a', border:'1px solid '+(totalQ > 45 ? '#22c55e33' : '#b47cff33'), borderRadius:8, padding:'5px 12px', marginBottom:14, display:'flex', alignItems:'center', gap:6}}>
-            <span style={{fontSize:10, color: totalQ > 45 ? '#4ade80' : '#b47cff', fontWeight:700}}>
-              {totalQ > 45
+          <div style={{background: quizIsFlex ? '#0a1a2a' : totalQ > 45 ? '#0a1a0a' : '#0a0e1a', border:'1px solid '+(quizIsFlex ? '#4fc9ff44' : totalQ > 45 ? '#22c55e33' : '#b47cff33'), borderRadius:8, padding:'5px 12px', marginBottom:14, display:'flex', alignItems:'center', gap:6}}>
+            <span style={{fontSize:10, color: quizIsFlex ? '#4fc9ff' : totalQ > 45 ? '#4ade80' : '#b47cff', fontWeight:700}}>
+              {quizIsFlex
+                ? `⚡ FLEX puanlama · ${totalQ} soru · Değişken puan (S1-S3: 5p … S10: 40p)`
+                : totalQ > 45
                 ? `📊 ${totalQ} soru · Sabit puanlama: Her soru 10 puan`
                 : `📊 ${totalQ} soru · Kademeli puanlama: ${Array.from({length:Math.ceil(totalQ/10)},(_,i)=>`${i*10+1}-${Math.min((i+1)*10,totalQ)}→${(i+1)*10}p`).join(' / ')}`
               }
@@ -906,7 +944,7 @@ export default function App() {
   if (quizStep === 'results') {
     const displayScores = Object.keys(quizLiveScores).length > 0 ? quizLiveScores : quizScores;
     const displayGroups = quizLiveGroups.length > 0 ? quizLiveGroups : quizGroups;
-    const allGroupScores = displayGroups.map(g=>({...g,score:calcGroupScore(g.no,quizEventType,displayScores,totalQ)})).sort((a,b)=>b.score-a.score);
+    const allGroupScores = displayGroups.map(g=>({...g,score:calcGroupScore(g.no,quizEventType,displayScores,totalQ,quizIsFlex)})).sort((a,b)=>b.score-a.score);
     const maxScore = allGroupScores.length > 0 ? allGroupScores[0].score : 0;
     const medals = ['🥇','🥈','🥉'];
     return (

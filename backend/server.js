@@ -262,7 +262,9 @@ app.post('/api/quiz/parse-questions', upload.single('file'), async function(req,
     if (currentNo !== null && currentQuestion.trim() && !questions[currentNo]) {
       questions[currentNo] = { question: currentQuestion.trim(), answer: '', section: currentSection };
     }
-    res.json({ questions: questions, count: Object.keys(questions).length });
+    // İlk satırı döndür — flex mod tespiti için
+    const firstLine = lines.find(l => l.trim().length > 0);
+    res.json({ questions: questions, count: Object.keys(questions).length, firstLine: firstLine ? firstLine.trim() : '' });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
