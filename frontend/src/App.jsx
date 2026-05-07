@@ -329,10 +329,10 @@ export default function App() {
         if (file.name.toLowerCase().endsWith('.txt')) {
           const rawText = await file.text();
           const firstLine = rawText.split(/\r?\n/)[0].trim().toLowerCase();
-          detectedFlex = firstLine === 'flex';
+          detectedFlex = firstLine.startsWith('flex');
         } else {
           // docx / pdf — sunucu firstLine döndürüyor
-          detectedFlex = !!(qJson.firstLine && qJson.firstLine.trim().toLowerCase() === 'flex');
+          detectedFlex = !!(qJson.firstLine && qJson.firstLine.trim().toLowerCase().startsWith('flex'));
         }
       } catch {}
       setQuizIsFlex(detectedFlex);
