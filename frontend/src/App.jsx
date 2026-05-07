@@ -224,6 +224,7 @@ export default function App() {
           setQuizGroupCount(prev => prev || String(srv.groups.length));
         }
         if (srv.eventType) setQuizEventType(srv.eventType);
+        if (srv.isFlex !== undefined) setQuizIsFlex(!!srv.isFlex);
         setQuizScores(prev => {
           const merged = {...(srv.scores||{})};
           Object.keys(prev).forEach(gno => { merged[gno] = {...(merged[gno]||{}),...prev[gno]}; });
@@ -343,7 +344,7 @@ export default function App() {
         setQuizAnswers(answersFromQuestions); setQuizAnswerFile(file.name+' ('+answersCount+' cevap)');
         const cur = await fetch('/api/quiz').then(r=>r.json()).catch(()=>({quizData:null}));
         const base = cur.quizData||{eventType:quizEventType, groups:quizGroups, scores:quizScores, myGroups:quizMyGroups};
-        await fetch('/api/quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quizData:{...base,sessionId:quizSessionId,answers:answersFromQuestions,answersFile:file.name,questions:qJson.questions,questionsFile:file.name}})}).catch(()=>{});
+        await fetch('/api/quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quizData:{...base,sessionId:quizSessionId,isFlex:detectedFlex,answers:answersFromQuestions,answersFile:file.name,questions:qJson.questions,questionsFile:file.name}})}).catch(()=>{});
         setQuizCombinedFile(file.name+' ('+qJson.count+' soru, '+answersCount+' cevap)');
       } else {
         const formData2 = new FormData(); formData2.append('file', file);
@@ -354,7 +355,7 @@ export default function App() {
         if (cnt > 0) { setQuizAnswers(answers); setQuizAnswerFile(file.name+' ('+cnt+' cevap)'); }
         const cur2 = await fetch('/api/quiz').then(r=>r.json()).catch(()=>({quizData:null}));
         const base2 = cur2.quizData||{eventType:quizEventType,groups:quizGroups,scores:quizScores,myGroups:quizMyGroups};
-        await fetch('/api/quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quizData:{...base2,sessionId:quizSessionId,answers,answersFile:file.name,questions:qJson.questions,questionsFile:file.name}})}).catch(()=>{});
+        await fetch('/api/quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quizData:{...base2,sessionId:quizSessionId,isFlex:detectedFlex,answers,answersFile:file.name,questions:qJson.questions,questionsFile:file.name}})}).catch(()=>{});
         setQuizCombinedFile(file.name+' ('+qJson.count+' soru, '+cnt+' cevap)');
       }
     } catch(e) { setQuizCombinedError('Dosya okunamadı: '+e.message); }
