@@ -223,45 +223,98 @@ app.post('/api/quiz/parse-questions', upload.single('file'), async function(req,
     var currentSection = '';
     var lastQuestionNo = 0;
 
+    // Bu bölümlerde numara-Metin satırları soru değil, sadece cevaptır
+    // (görsel/melodi ekranda/kulaklıkta sunulur, soru metni yoktur)
+    var ANSWER_ONLY_SECTIONS = ['bluru netle', 'melodi avı', 'melodi avi'];
+
+    function isAnswerOnlySection(section) {
+      var s = section.toLowerCase().replace(/[^a-zığüşöçİĞÜŞÖÇ\s]/gi, '').trim();
+      return ANSWER_ONLY_SECTIONS.some(function(k) { return s.indexOf(k) !== -1; });
+    }
+
+    // Seçenek satırı tespiti: "1-Fizik 2-Kimya 3-Edebiyat" gibi KISA çoklu numara içeren satırlar
+    // Uzun cevap satırlarını (ör: "49-The Winner Takes It All-ABBA") dışlamak için uzunluk sınırı koyuyoruz
     function isOptionLine(line) {
+      if (line.length > 100) return false;
       var matches = line.match(/(?<!\d)\d+[-.)]\s*[^\d\s]/g);
       return matches && matches.length > 1;
+    }
+
+    function saveCurrentQuestion(answer) {
+      if (currentNo !== null && !questions[currentNo]) {
+        questions[currentNo] = {
+          question: currentQuestion.trim(),
+          answer: answer || '',
+          section: currentSection
+        };
+      }
+      currentNo = null;
+      currentQuestion = '';
     }
 
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i].trim();
       if (!line) continue;
-      var ansMatch = line.match(/^[Cc]evap\s*:(.+)$/);
+
+      // Cevap satırı
+      var ansMatch = line.match(/^[Cc]evap\s*[:\-]\s*(.+)$/);
       if (ansMatch) {
-        if (currentNo !== null && currentQuestion.trim()) {
-          questions[currentNo] = { question: currentQuestion.trim(), answer: ansMatch[1].trim(), section: currentSection };
-          currentNo = null;
-          currentQuestion = '';
-        }
+        saveCurrentQuestion(ansMatch[1].trim());
         continue;
       }
+
+      // numara-Metin formatı
       var qMatch = line.match(/^(\d+)[-.)]\s*(.+)$/);
       if (qMatch && !isOptionLine(line)) {
         var no = parseInt(qMatch[1]);
         if (no > lastQuestionNo) {
-          if (currentNo !== null && currentQuestion.trim() && !questions[currentNo]) {
-            questions[currentNo] = { question: currentQuestion.trim(), answer: '', section: currentSection };
-          }
-          currentNo = no;
+          // Önceki soruyu kaydet (cevap satırı gelmeden bölüm değiştiyse)
+          saveCurrentQuestion('');
+
           lastQuestionNo = no;
-          currentQuestion = qMatch[2];
+
+          if (isAnswerOnlySection(currentSection)) {
+            // Cevap-sadece bölüm: soru metni boş, cevap = satırın tamamı
+            questions[no] = {
+              question: '',
+              answer: qMatch[2].trim(),
+              section: currentSection
+            };
+            currentNo = null;
+            currentQuestion = '';
+          } else {
+            currentNo = no;
+            currentQuestion = qMatch[2];
+          }
           continue;
         }
       }
+
+      // Soru metnine devam satırı ya da bölüm başlığı
       if (currentNo !== null) {
-        currentQuestion += ' ' + line;
+        // Yeni bölüm başlığı gibi görünen kısa satırları soru metnine ekleme
+        // (Bluru Netle, Devri Alem gibi başlıkları ayır)
+        var looksLikeHeading = line.length < 50 && !/[?.]$/.test(line) && !/^[A-Da-d]\)/.test(line);
+        var nextLineIsQuestion = false;
+        for (var j = i + 1; j < lines.length; j++) {
+          var nl = lines[j].trim();
+          if (!nl) continue;
+          if (/^\d+[-.)]\s*/.test(nl)) { nextLineIsQuestion = true; }
+          break;
+        }
+        if (looksLikeHeading && nextLineIsQuestion) {
+          // Bu satır bölüm başlığı — mevcut soruyu kapat, bölümü güncelle
+          saveCurrentQuestion('');
+          currentSection = line;
+        } else {
+          currentQuestion += ' ' + line;
+        }
       } else {
         currentSection = line;
       }
     }
-    if (currentNo !== null && currentQuestion.trim() && !questions[currentNo]) {
-      questions[currentNo] = { question: currentQuestion.trim(), answer: '', section: currentSection };
-    }
+    // Son soruyu kaydet
+    saveCurrentQuestion('');
     // İlk satırı döndür — flex mod tespiti için
     const firstLine = lines.find(l => l.trim().length > 0);
     res.json({ questions: questions, count: Object.keys(questions).length, firstLine: firstLine ? firstLine.trim() : '' });
